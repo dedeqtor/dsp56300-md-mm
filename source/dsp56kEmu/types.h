@@ -37,6 +37,11 @@ namespace dsp56k
 //		template<typename TYPE> explicit RegType( const TYPE _var )			{ convert(*this,_var); }
 
 		~RegType() = default;
+
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s(var);
+		}
 		
 		bool operator ==			( const RegType<T,B>& _ref ) const		{ return var == _ref.var; }
 		bool operator ==			( const T& _ref ) const					{ return var == _ref; }

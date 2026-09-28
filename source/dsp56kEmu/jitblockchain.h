@@ -17,6 +17,7 @@ namespace dsp56k
 	class AsmJitErrorHandler;
 	class DSP;
 	class JitBlockRuntimeData;
+	struct JitBlockLayout;
 
 	class JitBlockChain final
 	{
@@ -70,6 +71,14 @@ namespace dsp56k
 		}
 
 		void notifyPMemWrite(TWord _addr, bool _isCurrentChain);
+
+		// Appends all live blocks and cached single-op blocks of this chain. For blocks whose P memory has been
+		// modified since they were compiled, the words they were compiled from are appended to _words
+		void getLayout(std::vector<JitBlockLayout>& _layout, std::vector<TWord>& _words);
+
+		// Recompiles a block recorded by getLayout(), _words are its recorded words, if any. Returns false if
+		// the result differs from the recording
+		bool restoreBlock(const JitBlockLayout& _layout, const TWord* _words);
 
 		size_t getFuncSize() const
 		{

@@ -11,6 +11,7 @@
 #include "debuggerinterface.h"
 
 #include "jitblockchain.h"
+#include "jitblockinfo.h"
 #include "jitcacheentry.h"
 #include "jitconfig.h"
 #include "jitdspmode.h"
@@ -118,6 +119,71 @@ namespace dsp56k
 		JitTrampoline& getTrampoline() { return m_trampoline; }
 		const CowMemory& getDispatchTemplate() const { return m_dispatchTemplate; }
 
+		void setForcedBlockLayout(const JitBlockLayout* _layout) { m_forcedBlockLayout = _layout; }
+		const JitBlockLayout* getForcedBlockLayout(const TWord _pc) const
+		{
+			return m_forcedBlockLayout && m_forcedBlockLayout->pc == _pc ? m_forcedBlockLayout : nullptr;
+		}
+
+		struct LoopState
+		{
+			TWord begin = 0;
+			TWord end = 0;
+		};
+
+		struct ChainState
+		{
+			uint32_t mode = JitDspMode::Uninitialized;
+			std::vector<JitBlockLayout> blocks;
+			std::vector<TWord> words;		// source words of blocks with wordCount != 0, in block order
+
+			template<typename TStream> void serializeState(TStream& _s)
+			{
+				_s(mode, blocks, words);
+			}
+		};
+
+		struct State
+		{
+			std::vector<TWord> volatileP;
+			std::vector<LoopState> loops;
+			std::vector<TWord> loopEnds;
+			uint64_t maxUsedPAddress = 0;
+			std::vector<ChainState> chains;
+
+			template<typename TStream> void serializeState(TStream& _s)
+			{
+				_s.marker(0x4a495430);	// JIT0
+				_s(volatileP, loops, loopEnds, maxUsedPAddress, chains);
+			}
+		};
+
+		// Captures the compiled block layout of all DSP modes. Blocks are not position independent and are
+		// recompiled on restore, but their boundaries and flags depend on the order in which they were created,
+		// which affects when peripherals and interrupts are processed. Restoring recreates identical blocks.
+		void getState(State& _state);
+
+		// Destroys all blocks and recompiles the recorded ones. P memory and DSP registers must be restored
+		// already. Returns the number of blocks that could not be recreated identically
+		uint32_t setState(const State& _state);
+
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			State state;
+			if constexpr (!TStream::Reading)
+				getState(state);
+			_s(state);
+			if constexpr (TStream::Reading)
+			{
+				if(_s.failed())
+				{
+					destroyAllBlocks();
+					return;
+				}
+				setState(state);
+			}
+		}
+
 	private:
 		void checkPMemWrite() noexcept;
 
@@ -147,6 +213,8 @@ namespace dsp56k
 		JitConfig m_config;
 
 		size_t m_maxUsedPAddress = 0;
+
+		const JitBlockLayout* m_forcedBlockLayout = nullptr;
 
 		// the following data is accessed by JIT code at runtime, it NEEDS to be put last into this struct to be
 		// able to use ARM relative addressing, see member ordering in dsp.h

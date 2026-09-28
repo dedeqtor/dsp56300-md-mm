@@ -67,7 +67,7 @@ namespace dsp56k
 
 		constexpr TWord totalDspAreaSize = 0x1000000;
 		constexpr TWord totalDspAreaByteSize = sizeof(TWord) * totalDspAreaSize;
-		constexpr TWord invalidDspMemoryBlockSize = 0x100000;
+		constexpr TWord invalidDspMemoryBlockSize = g_invalidDspMemoryBlockSize;
 
 		const auto externalAreaSize = usedAreaSize - _externalMemAddress;
 

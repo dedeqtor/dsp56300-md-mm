@@ -19,6 +19,7 @@ namespace dsp56k
 		static constexpr uint32_t SrModeChangeRelevantBits = (~SrModeChangeIgnoreBits) & 0xffff00;
 
 		void initialize(const DSP& _dsp);
+		void initialize(const uint32_t _mode) { m_mode = _mode; }
 		auto get() const { return m_mode; }
 		AddressingMode getAddressingMode(uint32_t _aguIndex) const;
 

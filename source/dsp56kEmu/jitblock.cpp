@@ -40,9 +40,13 @@ namespace dsp56k
 			JitBlockInfo::Flags::PeripheralAccess);
 	}
 
-	void JitBlock::getInfo(JitBlockInfo& _info, const DSP& _dsp, const TWord _pc, const JitConfig& _config, const PagedArray<JitCacheEntry>& _cache, const std::set<TWord>& _volatileP, const std::map<TWord, TWord>& _loopStarts, const std::set<TWord>& _loopEnds)
+	void JitBlock::getInfo(JitBlockInfo& _info, const DSP& _dsp, const TWord _pc, const JitConfig& _config, const PagedArray<JitCacheEntry>& _cache, const std::set<TWord>& _volatileP, const std::map<TWord, TWord>& _loopStarts, const std::set<TWord>& _loopEnds, const JitBlockLayout* _forcedLayout/* = nullptr*/)
 	{
 		const auto& opcodes = _dsp.opcodes();
+
+		// A forced layout replaces the history-dependent termination checks (existing code, volatile P, loop
+		// starts/ends) by the recorded outcome. All content-dependent checks still run unchanged.
+		const TWord forcedEnd = _forcedLayout ? _pc + _forcedLayout->memSize : g_invalidAddress;
 
 		const bool isFastInterrupt = _pc < Vba_End;
 
@@ -64,7 +68,7 @@ namespace dsp56k
 
 		_info.pc = _pc;
 
-		if(_loopStarts.find(_pc - 2) != _loopStarts.end())
+		if(_forcedLayout ? (_forcedLayout->flags & static_cast<uint32_t>(JitBlockInfo::Flags::IsLoopBodyBegin)) != 0 : _loopStarts.find(_pc - 2) != _loopStarts.end())
 		{
 			// Note: a loop body may also be compiled while the DSP is NOT currently executing
 			// that loop (the address is reachable as regular flow, or the block was invalidated
@@ -87,8 +91,17 @@ namespace dsp56k
 				break;
 			}
 
+			if(_forcedLayout)
+			{
+				if(pc == forcedEnd)
+				{
+					terminationReason = static_cast<JitBlockInfo::TerminationReason>(_forcedLayout->terminationReason);
+					_info.flags |= _forcedLayout->flags & static_cast<uint32_t>(JitBlockInfo::Flags::ModeChange);
+					break;
+				}
+			}
 			// never overwrite code that already exists
-			if(pc < _cache.size() && _cache[pc].block)
+			else if(pc < _cache.size() && _cache[pc].block)
 			{
 				terminationReason = JitBlockInfo::TerminationReason::ExistingCode;
 				break;
@@ -145,8 +158,8 @@ namespace dsp56k
 			}
 
 			// for a volatile P address, if you have some code, break now. if not, generate this one op, and then return.
-			if (_volatileP.find(pc) != _volatileP.end() || 
-				(_volatileP.find(pc+1) != _volatileP.end() && Opcodes::getOpcodeLength(opA, instA, instB) == 2))
+			if (!_forcedLayout && (_volatileP.find(pc) != _volatileP.end() ||
+				(_volatileP.find(pc+1) != _volatileP.end() && Opcodes::getOpcodeLength(opA, instA, instB) == 2)))
 			{
 				terminationReason = JitBlockInfo::TerminationReason::VolatileP;
 				if (numInstructions)
@@ -231,9 +244,13 @@ namespace dsp56k
 			}
 
 			// always terminate block if loop end has reached
-			if(_loopEnds.find(_pc + numWords) != _loopEnds.end())
+			const bool isLoopEnd = _forcedLayout
+				? (_pc + numWords == forcedEnd && _forcedLayout->terminationReason == static_cast<uint32_t>(JitBlockInfo::TerminationReason::LoopEnd))
+				: _loopEnds.find(_pc + numWords) != _loopEnds.end();
+
+			if(isLoopEnd)
 			{
-				assert((_pc + numWords) == static_cast<TWord>(_dsp.regs().la.var + 1));
+				assert(_forcedLayout || (_pc + numWords) == static_cast<TWord>(_dsp.regs().la.var + 1));
 				terminationReason = JitBlockInfo::TerminationReason::LoopEnd;
 				break;
 			}
@@ -301,7 +318,7 @@ namespace dsp56k
 
 		uint32_t blockFlags = 0;
 
-		getInfo(info, dsp(), _pc, m_config, _cache, _volatileP, _loopStarts, _loopEnds);
+		getInfo(info, dsp(), _pc, m_config, _cache, _volatileP, _loopStarts, _loopEnds, m_dsp.getJit().getForcedBlockLayout(_pc));
 
 		const auto pcNext = _pc + info.memSize;
 

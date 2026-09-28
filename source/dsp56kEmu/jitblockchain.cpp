@@ -4,6 +4,7 @@
 #include "jitasmjithelpers.h"
 #include "jitblockruntimedata.h"
 #include "jitblock.h"
+#include "jitblockinfo.h"
 #include "jitemitter.h"
 #include "jitoptimizer.h"
 #include "jitprofilingsupport.h"
@@ -169,6 +170,116 @@ namespace dsp56k
 		destroy(_addr);
 		if(_isCurrentChain)
 			ensureFuncSize(_addr);
+	}
+
+	void JitBlockChain::getLayout(std::vector<JitBlockLayout>& _layout, std::vector<TWord>& _words)
+	{
+		const auto& mem = m_jit.dsp().memory();
+
+		auto add = [&](const JitBlockRuntimeData* _block, const bool _cached)
+		{
+			const auto& info = _block->getInfo();
+
+			JitBlockLayout l;
+			l.pc = info.pc;
+			l.memSize = info.memSize;
+			l.terminationReason = static_cast<uint32_t>(info.terminationReason);
+			l.flags = info.flags;
+			l.isCachedSingleOp = _cached ? 1 : 0;
+
+			// Writes to P memory through bridged X/Y or DMA do not invalidate JIT blocks, such a block keeps
+			// executing the code it was compiled from. Cached single-op blocks are stale by design
+			const auto& words = _block->getSourceWords();
+			for(size_t i=0; i<words.size(); ++i)
+			{
+				if(words[i] == mem.get(MemArea_P, l.pc + static_cast<TWord>(i)))
+					continue;
+				l.wordCount = static_cast<uint32_t>(words.size());
+				_words.insert(_words.end(), words.begin(), words.end());
+				break;
+			}
+
+			_layout.push_back(l);
+		};
+
+		const JitBlockRuntimeData* last = nullptr;
+
+		m_jitCache.forEachAllocated([&](const JitCacheEntry& _e)
+		{
+			// a block occupies consecutive entries
+			if(_e.block && _e.block != last)
+				add(_e.block, false);
+			last = _e.block;
+
+			if(!_e.singleOpCache)
+				return;
+
+			for (const auto& it : *_e.singleOpCache)
+			{
+				if(it.second)
+					add(it.second, true);
+			}
+		});
+	}
+
+	bool JitBlockChain::restoreBlock(const JitBlockLayout& _layout, const TWord* _words)
+	{
+		auto& mem = m_jit.dsp().memory();
+		const auto pSize = mem.sizeP();
+
+		if(_layout.pc >= pSize || !_layout.memSize || _layout.memSize > pSize - _layout.pc)
+			return false;
+
+		if(_layout.wordCount > pSize - _layout.pc || _layout.wordCount > _layout.memSize + 1)
+			return false;
+
+		for(TWord i=_layout.pc; i<_layout.pc + _layout.memSize; ++i)
+		{
+			if(i < m_jitCache.size() && m_jitCache[i].block)
+				return false;
+		}
+
+		// Compile from the recorded words if P memory has changed since the block was compiled
+		auto* p = mem.getMemAreaPtr(MemArea_P) + _layout.pc;
+
+		TWord current[JitBlockLayoutMaxWords];
+		const auto wordCount = std::min<uint32_t>(_layout.wordCount, JitBlockLayoutMaxWords);
+		if(wordCount != _layout.wordCount)
+			return false;
+
+		for(uint32_t i=0; i<wordCount; ++i)
+		{
+			current[i] = p[i];
+			p[i] = _words[i];
+		}
+
+		m_jit.setForcedBlockLayout(&_layout);
+		auto* b = emit(_layout.pc);
+		m_jit.setForcedBlockLayout(nullptr);
+
+		for(uint32_t i=0; i<wordCount; ++i)
+			p[i] = current[i];
+
+		if(!b)
+			return false;
+
+		const auto& info = b->getInfo();
+
+		const bool match = info.memSize == _layout.memSize
+			&& static_cast<uint32_t>(info.terminationReason) == _layout.terminationReason
+			&& info.flags == _layout.flags;
+
+		if(!match)
+		{
+			LOG("JIT state restore: block at " << HEX(_layout.pc) << " could not be recreated identically, recorded size " << _layout.memSize
+				<< " reason " << _layout.terminationReason << " flags " << HEX(_layout.flags) << ", got size " << info.memSize
+				<< " reason " << static_cast<uint32_t>(info.terminationReason) << " flags " << HEX(info.flags));
+		}
+
+		if(_layout.isCachedSingleOp)
+			destroy(b);
+
+		return match;
 	}
 
 	void JitBlockChain::destroyParents(JitBlockRuntimeData* _block)
@@ -389,6 +500,13 @@ namespace dsp56k
 		}
 
 		b->finalize(func, emitter->codeHolder);
+
+		{
+			// remember the source, see getLayout()
+			const auto& mem = m_jit.dsp().memory();
+			const auto count = std::min<TWord>(b->getPMemSize() + 1, mem.sizeP() - _pc);
+			b->setSourceWords(m_jit.dsp().memory().getMemAreaPtr(MemArea_P) + _pc, count);
+		}
 		m_codeSize += emitter->codeHolder.codeSize();
 
 		m_jit.releaseEmitter(emitter);

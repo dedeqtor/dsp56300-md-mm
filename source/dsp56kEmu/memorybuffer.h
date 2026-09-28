@@ -5,6 +5,9 @@
 
 namespace dsp56k
 {
+	// with MMU support, all DSP addresses above valid memory are mapped to one scratch block of this size
+	static constexpr TWord g_invalidDspMemoryBlockSize = 0x100000;
+
 #ifdef __ANDROID__
 	class MemoryBuffer
 	{

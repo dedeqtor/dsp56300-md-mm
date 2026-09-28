@@ -30,7 +30,7 @@ namespace dsp56k
 			std::string sourceText;
 		};
 
-		JitBlockRuntimeData() = default;
+		JitBlockRuntimeData() { m_sourceWords.reserve(64); }
 		~JitBlockRuntimeData();
 
 		const std::string& getDisasm() const { return m_dspAsm; }
@@ -48,6 +48,10 @@ namespace dsp56k
 		bool isGenerating() const { return m_generating; }
 
 		static uint64_t getSingleOpCacheKey(TWord _opA, TWord _opB);
+
+		// P memory words the block was compiled from, starting at its first PC
+		void setSourceWords(const TWord* _words, size_t _count) { m_sourceWords.assign(_words, _words + _count); }
+		const std::vector<TWord>& getSourceWords() const { return m_sourceWords; }
 
 		TWord getChild() const { return m_child; }
 		TWord getNonBranchChild() const { return m_nonBranchChild; }
@@ -102,5 +106,6 @@ namespace dsp56k
 		bool m_establishesPc = false;
 		bool m_generating = false;
 		std::vector<InstructionProfilingInfo> m_profilingInfo;
+		std::vector<TWord> m_sourceWords;
 	};
 }

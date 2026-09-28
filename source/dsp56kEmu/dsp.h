@@ -462,6 +462,35 @@ namespace dsp56k
 		const auto&		getInterruptFunc				() const			{ return m_interruptFunc; }
 		auto			getExecPeripheralsFunc			() const			{ return m_execPeripheralsFunc; }
 
+		// Core registers, execution state, memory and the JIT block layout. Peripherals are serialized by their
+		// owner. Connections (peripherals, callbacks, custom interrupts, JIT config) must be set up identically
+		// on the restore target before reading. JIT blocks are recompiled during the read
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s.marker(0x44535030);	// DSP0
+
+			uint32_t interruptFunc = getInterruptFuncIndex();
+
+			_s(reg, pcCurrentInstruction, m_opWordB, m_currentOpLen, m_instructions, m_maxWaitInstructions, m_cycles, m_processingMode, interruptFunc, m_invalidPCReported);
+			_s(ccrCache.ab, ccrCache.alu, ccrCache.dirty);
+			_s(m_pendingInterrupts, m_pendingExternalInterrupts, cache);
+
+			if constexpr (TStream::Reading)
+			{
+				if(!setInterruptFuncIndex(interruptFunc))
+					_s.fail();
+			}
+
+			_s(mem, m_jit);
+
+			if constexpr (TStream::Reading)
+				onStateRestored();
+		}
+
+		uint32_t		getInterruptFuncIndex			() const;
+		bool			setInterruptFuncIndex			(uint32_t _index);
+		void			onStateRestored					();
+
 		void			terminate						();
 
 		void				setDebugger						(DebuggerInterface* _debugger);

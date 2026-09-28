@@ -257,6 +257,16 @@ namespace dsp56k
 		TWord getTxWordCount() const;
 		TWord getRxWordCount() const;
 
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			Audio::serializeState(_s);
+			_s(m_tx, m_tsr, m_rx, m_sr, m_cra, m_crb, m_tsma, m_tsmb, m_rsma, m_rsmb, m_vbaRead);
+			_s(m_rxSlotCounter, m_rxFrameCounter, m_txSlotCounter, m_txFrameCounter, m_lastTxWrittenMask, m_readRX, m_writtenTX);
+			m_txFrame.serializeStateFull(_s);
+			m_rxFrame.serializeStateFull(_s);
+			_s(m_fineLinkMode, m_fastLinkRx, m_onDemandTxWireSemantics, m_onDemandRxWireSemantics, m_pendingReceiveDmaOnEnable, m_fastLinkRxStarted);
+		}
+
 	private:
 
 		void injectInterrupt(TWord _interrupt) const;

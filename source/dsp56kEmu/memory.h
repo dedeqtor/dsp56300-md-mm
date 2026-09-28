@@ -63,6 +63,10 @@ namespace dsp56k
 		TWord*												p;
 
 		TWord												m_bridgedMemoryAddress;
+
+		// number of words that are backed by storage per area, differs from m_size if memory is bridged
+		TWord												m_allocSizeP = 0;
+		TWord												m_allocSizeXY = 0;
 		
 		struct STransaction
 		{
@@ -157,6 +161,50 @@ namespace dsp56k
 		}
 
 		bool hasMmuSupport() const { return m_mmuBuffer != nullptr; }
+
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s.marker(0x4d454d30);	// MEM0
+
+			uint32_t sizeP = m_allocSizeP;
+			uint32_t sizeXY = m_allocSizeXY;
+			uint32_t sizeScratch = hasMmuSupport() ? g_invalidDspMemoryBlockSize : 0;
+
+			_s(sizeP, sizeXY, sizeScratch);
+
+			// a restore target with a different memory layout cannot take the data
+			if(sizeP != m_allocSizeP || sizeXY != m_allocSizeXY)
+			{
+				_s.fail();
+				return;
+			}
+
+			_s(m_bridgedMemoryAddress);
+
+			_s.raw(p, sizeof(TWord) * m_allocSizeP);
+			_s.raw(x, sizeof(TWord) * m_allocSizeXY);
+			_s.raw(y, sizeof(TWord) * m_allocSizeXY);
+
+			// Scratch area that receives accesses above valid memory, only exists with MMU support. The data is
+			// dropped if the host of the restore target has no MMU support
+			if(!sizeScratch)
+				return;
+
+			if(hasMmuSupport() && sizeScratch == g_invalidDspMemoryBlockSize)
+			{
+				_s.raw(p + m_allocSizeP, sizeof(TWord) * sizeScratch);
+			}
+			else if constexpr (TStream::Reading)
+			{
+				if(sizeScratch > g_invalidDspMemoryBlockSize)
+				{
+					_s.fail();
+					return;
+				}
+				std::vector<TWord> scratch(sizeScratch);
+				_s.raw(scratch.data(), sizeof(TWord) * sizeScratch);
+			}
+		}
 
 	private:
 		void				fillWithInitPattern	();

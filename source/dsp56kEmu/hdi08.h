@@ -221,6 +221,15 @@ namespace dsp56k
 				 m_hostCommandInFlight.load(std::memory_order_acquire));
 		}
 
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s(m_hsr, m_hcr, m_hpcr, m_dataRX, m_dataTX, m_pendingTXInterrupts, m_lastRXClock, m_hdr, m_hddr);
+			_s(m_transmitDataAlwaysEmpty, m_transmitDataBuffered, m_rxRateLimit, m_waitServeRXInterrupt, m_pendingHostFlags01);
+			_s(m_dmaReqSourceReceive, m_dmaReqSourceTransmit);
+			_s(m_hostCommandArbitration, m_hostCommandPending, m_hostCommandVba, m_lastRXValue, m_hcReturnSsIndex, m_hcEntered);
+			_s(m_hostCommandInFlight, m_hostCommandHasQueued, m_hostCommandQueuedVba, m_hostCommandAcceptedCycle);
+		}
+
 	private:
 		// Suppress mainline HRX consumption while a command can preempt it.
 		bool hostCommandHoldActive() const;

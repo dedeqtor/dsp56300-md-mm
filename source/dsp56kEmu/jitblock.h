@@ -28,6 +28,7 @@ namespace asmjit
 namespace dsp56k
 {
 	struct JitBlockInfo;
+	struct JitBlockLayout;
 	struct JitConfig;
 
 	class DSP;
@@ -42,7 +43,7 @@ namespace dsp56k
 		JitBlock(JitEmitter& _a, DSP& _dsp, JitRuntimeData& _runtimeData, JitConfig&& _config);
 		~JitBlock();
 
-		static void getInfo(JitBlockInfo& _info, const DSP& _dsp, TWord _pc, const JitConfig& _config, const PagedArray<JitCacheEntry>& _cache, const std::set<TWord>& _volatileP, const std::map<TWord, TWord>& _loopStarts, const std::set<TWord>& _loopEnds);
+		static void getInfo(JitBlockInfo& _info, const DSP& _dsp, TWord _pc, const JitConfig& _config, const PagedArray<JitCacheEntry>& _cache, const std::set<TWord>& _volatileP, const std::map<TWord, TWord>& _loopStarts, const std::set<TWord>& _loopEnds, const JitBlockLayout* _forcedLayout = nullptr);
 
 		bool emit(JitBlockRuntimeData& _rt, JitBlockChain* _chain, TWord _pc, const PagedArray<JitCacheEntry>& _cache, const std::set<TWord>& _volatileP, const std::map<TWord, TWord>& _loopStarts, const std::set<TWord>& _loopEnds, bool _profilingSupport);
 

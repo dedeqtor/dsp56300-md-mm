@@ -1,5 +1,7 @@
 #include "jit.h"
 
+#include <algorithm>
+
 #include "dsp.h"
 #include "jitblock.h"
 #include "jitdspmode.h"
@@ -414,6 +416,101 @@ namespace dsp56k
 		m_chains.clear();
 		m_currentChain = nullptr;
 		checkModeChange();
+	}
+
+	void Jit::getState(State& _state)
+	{
+		_state.volatileP.assign(m_volatileP.begin(), m_volatileP.end());
+
+		_state.loops.clear();
+		for (const auto& [begin, end] : m_loops)
+			_state.loops.push_back({begin, end});
+
+		_state.loopEnds.assign(m_loopEnds.begin(), m_loopEnds.end());
+		_state.maxUsedPAddress = m_maxUsedPAddress;
+
+		_state.chains.clear();
+		for (auto& [mode, chain] : m_chains)
+		{
+			auto& c = _state.chains.emplace_back();
+			c.mode = mode.get();
+			chain->getLayout(c.blocks, c.words);
+		}
+
+		// unordered_map iteration order is unspecified, keep the output stable
+		std::sort(_state.chains.begin(), _state.chains.end(), [](const ChainState& _a, const ChainState& _b)
+		{
+			return _a.mode < _b.mode;
+		});
+	}
+
+	uint32_t Jit::setState(const State& _state)
+	{
+		m_chains.clear();
+		m_currentChain = nullptr;
+
+		m_volatileP.clear();
+		m_volatileP.insert(_state.volatileP.begin(), _state.volatileP.end());
+
+		m_maxUsedPAddress = static_cast<size_t>(std::min<uint64_t>(_state.maxUsedPAddress, m_dsp.memory().sizeP()));
+
+		uint32_t failed = 0;
+
+		for (const auto& c : _state.chains)
+		{
+			JitDspMode mode;
+			mode.initialize(c.mode);
+
+			if(m_chains.find(mode) != m_chains.end())
+			{
+				++failed;
+				continue;
+			}
+
+			auto* chain = new JitBlockChain(*this, mode, m_maxUsedPAddress);
+			m_chains.insert(std::make_pair(mode, chain));
+
+			std::vector<size_t> wordOffsets;
+			wordOffsets.reserve(c.blocks.size());
+			size_t wordOffset = 0;
+			for (const auto& b : c.blocks)
+			{
+				wordOffsets.push_back(wordOffset);
+				wordOffset += b.wordCount;
+			}
+			if(wordOffset > c.words.size())
+			{
+				++failed;
+				continue;
+			}
+
+			// Cached single-op blocks are compiled into an empty area and then moved to the cache, therefore first
+			for(uint32_t pass=0; pass<2; ++pass)
+			{
+				for (size_t i=0; i<c.blocks.size(); ++i)
+				{
+					const auto& b = c.blocks[i];
+
+					if((b.isCachedSingleOp != 0) != (pass == 0))
+						continue;
+
+					if(!chain->restoreBlock(b, c.words.data() + wordOffsets[i]))
+						++failed;
+
+					// loop registrations are restored as a whole below
+					m_loops.clear();
+					m_loopEnds.clear();
+				}
+			}
+		}
+
+		for (const auto& l : _state.loops)
+			m_loops.insert(std::make_pair(l.begin, l.end));
+		m_loopEnds.insert(_state.loopEnds.begin(), _state.loopEnds.end());
+
+		checkModeChange();
+
+		return failed;
 	}
 
 	JitBlockEmitter* Jit::acquireEmitter(JitConfig&& _config)

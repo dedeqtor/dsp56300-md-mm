@@ -167,6 +167,12 @@ namespace dsp56k
 		setClockSource(&m_periph.getDSP(), _clockSource);
 	}
 
+	void EsxiClock::onStateRestored()
+	{
+		// the counter pointer follows the restored clock source
+		setClockSource(&m_periph.getDSP(), m_clockSource);
+	}
+
 	void EsxiClock::restartClock()
 	{
 		m_lastClock = *m_dspInstructionCounter;

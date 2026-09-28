@@ -36,6 +36,9 @@ namespace dsp56k
 		x = address;	address += sizeXY();
 		y = address;
 
+		m_allocSizeP = _memSize;
+		m_allocSizeXY = _memSize;
+
 		m_mem[MemArea_X] = x;
 		m_mem[MemArea_Y] = y;
 		m_mem[MemArea_P] = p;
@@ -59,6 +62,9 @@ namespace dsp56k
 		// As XY is bridged to P for all addresses >= _brigedMemoryAddress, we need to allocate more for P but less for XY if a bridged address is specified
 		const auto pSize = calcPMemSize(_memSizeP, _memSizeXY, _brigedMemoryAddress);
 		const auto xySize = calcXYMemSize(_memSizeXY, _brigedMemoryAddress);
+
+		m_allocSizeP = pSize;
+		m_allocSizeXY = xySize;
 
 		m_mmuBuffer.reset(new MemoryBuffer(pSize, xySize, _brigedMemoryAddress));
 

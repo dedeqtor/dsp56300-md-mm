@@ -319,6 +319,37 @@ namespace dsp56k
 			m_interruptFunc = &dspExecInterrupts;
 	}
 
+	uint32_t DSP::getInterruptFuncIndex() const
+	{
+		if(m_interruptFunc == m_execPeripheralsFunc)				return 0;
+		if(m_interruptFunc == &dspExecInterrupts)					return 1;
+		if(m_interruptFunc == &dspExecDefaultPreventInterrupt)		return 2;
+		if(m_interruptFunc == &dspExecNop)							return 3;
+		assert(false && "unknown interrupt function");
+		return 0xffffffff;
+	}
+
+	bool DSP::setInterruptFuncIndex(const uint32_t _index)
+	{
+		switch (_index)
+		{
+		case 0:	m_interruptFunc = m_execPeripheralsFunc;				return true;
+		case 1:	m_interruptFunc = &dspExecInterrupts;					return true;
+		case 2:	m_interruptFunc = &dspExecDefaultPreventInterrupt;	return true;
+		case 3:	m_interruptFunc = &dspExecNop;						return true;
+		default:
+			m_interruptFunc = m_execPeripheralsFunc;
+			return false;
+		}
+	}
+
+	void DSP::onStateRestored()
+	{
+		// P memory has been replaced, per-PC interpreter data is stale. The JIT has been rebuilt while reading
+		if(!g_useJIT || !m_opcodeCache.empty())
+			clearOpcodeCache();
+	}
+
 	void DSP::terminate()
 	{
 		m_terminate.store(true, std::memory_order_relaxed);

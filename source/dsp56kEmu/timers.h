@@ -40,6 +40,14 @@ namespace dsp56k
 			M_TCF = 21,								// Timer Compare Flag
 		};
 
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			TWord tcsr = m_tcsr;
+			_s(m_tlr, m_tcpr, m_tcr, tcsr);
+			if constexpr (TStream::Reading)
+				m_tcsr = tcsr;
+		}
+
 	private:
 		TWord m_tlr = 0;							// Timer Load Register
 		TWord m_tcpr = 0;							// Timer Compare Register
@@ -132,6 +140,11 @@ namespace dsp56k
 		void setTimerUpdateInterval(const TWord _instructions);
 
 		void setSymbols(Disassembler& _disasm) const;
+
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s(m_timerupdateInterval, m_tplr, m_tpcr, m_lastClock, m_timers);
+		}
 
 	private:
 		template<Timer::TcsrBits B> static void timerFlagReset(const Bitfield<unsigned, Timer::TcsrBits, 22>& _tcsr, TWord& _val)

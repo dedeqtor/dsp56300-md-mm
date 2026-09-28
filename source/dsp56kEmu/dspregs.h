@@ -41,5 +41,10 @@ namespace dsp56k
 		TReg24 vba;						// vector base address
 	
 		TReg24 ep;						// stack extension pointer register
+
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s(x, y, a, b, r, n, m, mMask, mModulo, sr, omr, pc, la, lc, sp, sc, ss, sz, vba, ep);
+		}
 	};	
 }

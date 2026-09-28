@@ -136,6 +136,11 @@ namespace dsp56k
 
 		void extractDCOHML(TWord& _h, TWord& _m, TWord& _l) const;
 
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s(m_dsr, m_ddr, m_dco, m_dcr, m_dcoh, m_dcom, m_dcol, m_dcohInit, m_dcomInit, m_dcolInit, m_pendingTransfer, m_lastClock);
+		}
+
 	private:
 		void memCopy(EMemArea _dstArea, TWord _dstAddr, EMemArea _srcArea, TWord _srcAddr, TWord _count) const;
 		void memFill(EMemArea _dstArea, TWord _dstAddr, EMemArea _srcArea, TWord _srcAddr, TWord _count) const;
@@ -214,6 +219,35 @@ namespace dsp56k
 		bool trigger(DmaChannel::RequestSource _source) const;
 		void addTriggerTarget(DmaChannel* _channel);
 		void removeTriggerTarget(const DmaChannel* _channel);
+
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s(m_dstr, m_channels, m_dor);
+
+			// request targets are stored as channel indices, in order
+			for (auto& targets : m_requestTargets)
+			{
+				std::vector<uint8_t> indices;
+				for (const auto* channel : targets)
+					indices.push_back(static_cast<uint8_t>(channel - m_channels.data()));
+
+				_s(indices);
+
+				if constexpr (TStream::Reading)
+				{
+					targets.clear();
+					for (const auto i : indices)
+					{
+						if(i >= m_channels.size())
+						{
+							_s.fail();
+							break;
+						}
+						targets.push_back(&m_channels[i]);
+					}
+				}
+			}
+		}
 
 	private:
 		TWord m_dstr;

@@ -133,6 +133,11 @@ namespace dsp56k
 
 		auto getType() const { return m_type; }
 
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s(m_delayCycles, m_targetClock, m_targetCycle, m_hasCycleDeadline);
+		}
+
 	private:
 		DSP* m_dsp = nullptr;
 		uint32_t m_delayCycles = 0;
@@ -200,6 +205,16 @@ namespace dsp56k
 		void setSymbols(Disassembler& _disasm) const override;
 
 		void terminate() override;
+
+		// All peripheral state. Callbacks and configuration made by the owner are not part of it and must be set
+		// up identically on the restore target
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s.marker(0x50333033);	// P303
+			IPeripherals::serializeState(_s);
+			_s(m_mem, m_dma, m_essi0, m_essi1, m_hi08, m_timers, m_portC, m_portD);
+			m_essiClock.serializeState(_s, std::array<Esxi*, 2>{&m_essi0, &m_essi1});
+		}
 
 	private:
 		Dma m_dma;

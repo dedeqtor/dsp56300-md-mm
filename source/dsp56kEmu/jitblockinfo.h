@@ -78,4 +78,18 @@ namespace dsp56k
 		uint32_t ccrWrite = 0;
 		uint32_t ccrOverwrite = 0;				// overwrite = written before read, i.e. the previous state is not important
 	};
+
+	// Block boundaries depend on the history of block creation (existing code, loops, volatile P). This records
+	// what a block ended up being so that an identical block can be recompiled after a state restore.
+	static constexpr uint32_t JitBlockLayoutMaxWords = 1024;
+
+	struct JitBlockLayout
+	{
+		TWord pc = 0;
+		TWord memSize = 0;
+		uint32_t terminationReason = 0;
+		uint32_t flags = 0;
+		uint32_t isCachedSingleOp = 0;
+		uint32_t wordCount = 0;			// number of P words the block was compiled from if they differ from current P memory
+	};
 }

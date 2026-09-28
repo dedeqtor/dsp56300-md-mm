@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 
 #include "types.h"
@@ -67,12 +68,56 @@ namespace dsp56k
 		auto getLastClock() const { return m_lastClock; }
 		auto getCyclesPerSample() const { return m_cyclesPerSample; }
 
+		// _esxis: all ESAIs/ESSIs that may be registered, entries are stored as index into it
+		template<typename TStream, size_t N> void serializeState(TStream& _s, const std::array<Esxi*, N>& _esxis)
+		{
+			_s(m_lastClock, m_nextCycleDeadline, m_cyclesPerSample, m_clockSource, m_fixedCyclesPerSample, m_samplerate, m_pctl);
+			_s(m_externalClockFrequency, m_speedHz, m_speedPercent, m_hasFineEsais, m_exactCycleDeadlineEnabled);
+
+			uint32_t count = static_cast<uint32_t>(m_esais.size());
+			_s(count);
+
+			if constexpr (TStream::Reading)
+			{
+				if(count > N)
+				{
+					_s.fail();
+					return;
+				}
+				m_esais.resize(count);
+			}
+
+			for (auto& e : m_esais)
+			{
+				uint32_t index = 0;
+				while(index < N && _esxis[index] != e.esai)
+					++index;
+
+				_s(index, e.tx, e.rx, e.finePeriod, e.fineLastClock);
+
+				if constexpr (TStream::Reading)
+				{
+					if(index >= N)
+					{
+						_s.fail();
+						e.esai = nullptr;
+						continue;
+					}
+					e.esai = _esxis[index];
+				}
+			}
+
+			if constexpr (TStream::Reading)
+				onStateRestored();
+		}
+
 	protected:
 		const auto& getEsais() const { return m_esais; }
 		const auto& getPeripherals() const { return m_periph; }
 
 	private:
 		void setClockSource(const DSP* _dsp, ClockSource _clockSource);
+		void onStateRestored();
 
 		void updateCyclesPerSample();
 

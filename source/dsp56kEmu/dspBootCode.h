@@ -26,6 +26,12 @@ namespace dsp56k
 		auto getLength() const { return m_length; }
 		auto getInitialPC() const { return m_initialPC; }
 
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s.marker(0x424f4f54);	// BOOT
+			_s(m_state, m_length, m_initialPC, m_remaining, m_address);
+		}
+
 	private:
 		DSP& m_dsp;
 

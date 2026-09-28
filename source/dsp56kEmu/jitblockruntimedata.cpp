@@ -50,6 +50,7 @@ namespace dsp56k
 		m_generating = false;
 		m_establishesPc = false;
 		m_profilingInfo.clear();
+		m_sourceWords.clear();
 	}
 
 	void JitBlockRuntimeData::addParent(const TWord _pc)

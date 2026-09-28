@@ -97,6 +97,35 @@ namespace dsp56k
 			}
 			void resize(const uint32_t _size)					{ m_slotCount = _size; }
 
+			template<typename TStream> void serializeState(TStream& _s)
+			{
+				_s(m_slotCount);
+				if constexpr (TStream::Reading)
+				{
+					if(m_slotCount > MaxSlotsPerFrame)
+					{
+						m_slotCount = 0;
+						_s.fail();
+					}
+				}
+				for(uint32_t i=0; i<m_slotCount; ++i)
+					_s(m_data[i]);
+			}
+
+			// A frame that is being assembled holds data in slots beyond its size
+			template<typename TStream> void serializeStateFull(TStream& _s)
+			{
+				_s(m_slotCount, m_data);
+				if constexpr (TStream::Reading)
+				{
+					if(m_slotCount > MaxSlotsPerFrame)
+					{
+						m_slotCount = 0;
+						_s.fail();
+					}
+				}
+			}
+
 			void copyTo(Frame& _target) const
 			{
 				_target.m_slotCount = m_slotCount;
@@ -263,6 +292,11 @@ namespace dsp56k
 
 		auto& getAudioInputs() { return m_audioInputs; }
 		auto& getAudioOutputs() { return m_audioOutputs; }
+
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s(m_audioInputs, m_audioOutputs, m_latency, m_readFrameIndex, m_writeFrameIndex);
+		}
 
 	public:
 		static constexpr uint32_t RingBufferSize = 8192 * 4;

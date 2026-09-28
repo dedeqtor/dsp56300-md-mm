@@ -85,6 +85,12 @@ namespace dsp56k
 			m_callbackConfigChanged();
 		}
 
+		// Callbacks are not invoked on restore
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			_s(m_direction, m_control, m_dspWrite, m_hostWrite);
+		}
+
 	protected:
 		TWord m_direction = 0;	// bitmask, bit clear = Host to DSP, bit set = DSP to Host
 		TWord m_control = 0;	// bitmask, bit enabled = GPIO enabled
@@ -123,6 +129,12 @@ namespace dsp56k
 		const TWord& getControl() const override
 		{
 			return m_essiControl;
+		}
+
+		template<typename TStream> void serializeState(TStream& _s)
+		{
+			Gpio::serializeState(_s);
+			_s(m_essiControl);
 		}
 
 	private:
