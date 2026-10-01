@@ -383,7 +383,9 @@ namespace dsp56k
 		const auto hdiDelay = m_hi08.exec();
 		const auto timerDelay = m_timers.exec();
 		const auto dmaDelay = m_dma.exec();
-		const auto delay = std::min({essiDelay, hdiDelay, timerDelay, dmaDelay});
+		// Pairwise: MSVC routes the initializer_list overload through its runtime-dispatched
+		// vectorized minmax, which was ~10% of MD emulation time on this hot path.
+		const auto delay = std::min(std::min(essiDelay, hdiDelay), std::min(timerDelay, dmaDelay));
 		return delay;
 	}
 
