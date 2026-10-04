@@ -32,8 +32,15 @@ namespace dsp56k
 			, m_readCount(_other.m_readCount.load(std::memory_order_relaxed))
 			, m_readSem(std::move(_other.m_readSem))
 			, m_writeSem(std::move(_other.m_writeSem))
+			, m_singleThreaded(_other.m_singleThreaded)
 		{
 		}
+
+		// A Lock=true ring whose producer and consumer always run on one thread can skip its
+		// semaphores (two locked atomics per push or pop). Its owner must then never push to a
+		// full ring or pop an empty one, which would have blocked that thread forever anyway.
+		// Set before first use: the semaphore counts are not maintained while it is on.
+		void setSingleThreaded(const bool _singleThreaded) { m_singleThreaded = _singleThreaded; }
 
 		constexpr static size_t capacity()	{ return C; }
 		bool empty() const					{ return loadReadAcq() == loadWriteAcq(); }
@@ -45,28 +52,28 @@ namespace dsp56k
 		{
 	//		assert( m_usage < C && "ring buffer is already full!" );
 
-			m_writeSem.wait();
+			semWait(m_writeSem);
 
 			m_data[wrapCounter(loadWriteRlx())] = _val;
 
 			// usage need to be incremented AFTER data has been written, otherwise, reader thread would read incomplete data
 			incWriteCount(1);
 
-			m_readSem.notify();
+			semNotify(m_readSem);
 		}
 
 		void push_back( T&& _val )
 		{
 	//		assert( m_usage < C && "ring buffer is already full!" );
 
-			m_writeSem.wait();
+			semWait(m_writeSem);
 
 			m_data[wrapCounter(loadWriteRlx())] = std::move(_val);
 
 			// usage need to be incremented AFTER data has been written, otherwise, reader thread would read incomplete data
 			incWriteCount(1);
 
-			m_readSem.notify();
+			semNotify(m_readSem);
 		}
 
 		template<typename TFunc>
@@ -74,14 +81,14 @@ namespace dsp56k
 		{
 	//		assert( m_usage < C && "ring buffer is already full!" );
 
-			m_writeSem.wait();
+			semWait(m_writeSem);
 
 			_fillEntry(m_data[wrapCounter(loadWriteRlx())]);
 
 			// usage need to be incremented AFTER data has been written, otherwise, reader thread would read incomplete data
 			incWriteCount(1);
 
-			m_readSem.notify();
+			semNotify(m_readSem);
 		}
 
 		template<typename TFunc>
@@ -89,7 +96,7 @@ namespace dsp56k
 		{
 	//		assert( m_usage < C && "ring buffer is already full!" );
 
-			m_writeSem.wait(static_cast<uint32_t>(_count));
+			semWait(m_writeSem, static_cast<uint32_t>(_count));
 
 			for (size_t i=0; i<_count; ++i)
 				_fillEntry(i, m_data[wrapCounter(loadWriteRlx())]);
@@ -97,26 +104,26 @@ namespace dsp56k
 			// usage need to be incremented AFTER data has been written, otherwise, reader thread would read incomplete data
 			incWriteCount(_count);
 
-			m_readSem.notify(static_cast<uint32_t>(_count));
+			semNotify(m_readSem, static_cast<uint32_t>(_count));
 		}
 
 		template<typename TFunc>
 		void pop_front(const TFunc& _readCallback)
 		{
-			m_readSem.wait();
+			semWait(m_readSem);
 
 			_readCallback(front());
 	//		assert( !empty() && "ring buffer is already empty!" );
 
 			incReadCount(1);
 
-			m_writeSem.notify();
+			semNotify(m_writeSem);
 		}
 
 		template<typename TFunc>
 		void pop_front(const size_t _count, const TFunc& _readCallback)
 		{
-			m_readSem.wait(static_cast<uint32_t>(_count));
+			semWait(m_readSem, static_cast<uint32_t>(_count));
 
 			for (size_t i=0; i<_count; ++i)
 			{
@@ -124,19 +131,19 @@ namespace dsp56k
 				incReadCount(1);
 			}
 
-			m_writeSem.notify(static_cast<uint32_t>(_count));
+			semNotify(m_writeSem, static_cast<uint32_t>(_count));
 		}
 
 		T pop_front()
 		{
-			m_readSem.wait();
+			semWait(m_readSem);
 
 			T res = std::move(front());
 	//		assert( !empty() && "ring buffer is already empty!" );
 
 			incReadCount(1);
 
-			m_writeSem.notify();
+			semNotify(m_writeSem);
 
 			return res;
 		}
@@ -184,6 +191,11 @@ namespace dsp56k
 		}
 
 	private:
+		template<typename S> void semWait(S& _sem)		{ if(!m_singleThreaded) _sem.wait(); }
+		template<typename S> void semNotify(S& _sem)	{ if(!m_singleThreaded) _sem.notify(); }
+		template<typename S> void semWait(S& _sem, const uint32_t _count)	{ if(!m_singleThreaded) _sem.wait(_count); }
+		template<typename S> void semNotify(S& _sem, const uint32_t _count)	{ if(!m_singleThreaded) _sem.notify(_count); }
+
 		// Single-writer counter bumps: the producer owns m_writeCount, the consumer owns m_readCount, so a
 		// relaxed load of our own value + a release store is race-free and cheaper than a locked fetch_add.
 		// The release pairs with the acquire loads below so a cross-thread reader that observes the new count
@@ -238,6 +250,7 @@ namespace dsp56k
 
 		Sem					m_readSem;
 		Sem					m_writeSem;
+		bool				m_singleThreaded = false;
 
 	public:
 		static void test()

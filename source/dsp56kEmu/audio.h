@@ -156,6 +156,13 @@ namespace dsp56k
 
 		bool hasRingBuffers() const { return m_useRingBuffers; }
 
+		// Both rings are only used from one thread: skip their semaphores (see RingBuffer).
+		void setSingleThreaded(const bool _singleThreaded)
+		{
+			m_audioInputs.setSingleThreaded(_singleThreaded);
+			m_audioOutputs.setSingleThreaded(_singleThreaded);
+		}
+
 		void setCallback(const AudioCallback& _ac)
 		{
 			m_callback = _ac ? _ac : [](Audio*) {};
